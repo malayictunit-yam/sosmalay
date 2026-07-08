@@ -91,17 +91,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         property: "og:description",
         content:
-          "Instant panic-button alerts to Police and MDRRMO with live GPS location tracking, built for LGU deployment.",
+          "RescueNow is the LGU-grade emergency panic button. One tap alerts Police and MDRRMO with your live GPS location.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "RescueNow — One tap for emergency help" },
+      { name: "twitter:description", content: "RescueNow is the LGU-grade emergency panic button. One tap alerts Police and MDRRMO with your live GPS location." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/b4ddfa2a-0995-4ff6-9427-85fd1b6c1f1c" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/b4ddfa2a-0995-4ff6-9427-85fd1b6c1f1c" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
   shellComponent: RootShell,

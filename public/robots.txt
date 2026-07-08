@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /home
+Disallow: /history
+Disallow: /profile
+Disallow: /dashboard

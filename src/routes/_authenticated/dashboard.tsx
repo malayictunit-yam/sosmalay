@@ -461,6 +461,17 @@ function Info({ label, value, href, icon }: { label: string; value: string; href
   );
 }
 
+function StatusRow({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 font-medium ${value ? "text-foreground" : "text-muted-foreground"}`}>
+        {value ? formatDistanceToNow(new Date(value), { addSuffix: true }) : "—"}
+      </div>
+    </div>
+  );
+}
+
 function exportCsv(rows: Emergency[]) {
   // helper unchanged
   if (!rows.length) return;

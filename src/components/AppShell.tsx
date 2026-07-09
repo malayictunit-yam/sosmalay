@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Home, History, LayoutDashboard, LogOut, ShieldAlert, User } from "lucide-react";
+import { Home, History, LayoutDashboard, LogOut, ShieldAlert, User, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [isResponder, setIsResponder] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -22,6 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .eq("user_id", user.user.id);
       if (!alive) return;
       setIsResponder(!!data?.some((r) => ["police", "mdrrmo", "barangay", "admin"].includes(r.role)));
+      setIsAdmin(!!data?.some((r) => r.role === "admin"));
     })();
     return () => {
       alive = false;
@@ -41,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { to: "/history", label: "History", icon: History },
     { to: "/profile", label: "Profile", icon: User },
     ...(isResponder ? [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] : []),
+    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: UserCog }] : []),
   ];
 
   return (

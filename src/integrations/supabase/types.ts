@@ -17,18 +17,24 @@ export type Database = {
       emergencies: {
         Row: {
           accuracy: number | null
+          acknowledged_at: string | null
+          acknowledged_by: string | null
           address: string | null
           altitude: number | null
+          arrived_at: string | null
           cancel_reason: string | null
+          en_route_at: string | null
           google_maps_url: string | null
           heading: number | null
           id: string
+          image_urls: string[]
           latitude: number
           longitude: number
           mdrrmo_status: string
           notes: string | null
           police_status: string
           resolved_at: string | null
+          responder_name: string | null
           responder_notes: string | null
           speed: number | null
           started_at: string
@@ -39,18 +45,24 @@ export type Database = {
         }
         Insert: {
           accuracy?: number | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           address?: string | null
           altitude?: number | null
+          arrived_at?: string | null
           cancel_reason?: string | null
+          en_route_at?: string | null
           google_maps_url?: string | null
           heading?: number | null
           id?: string
+          image_urls?: string[]
           latitude: number
           longitude: number
           mdrrmo_status?: string
           notes?: string | null
           police_status?: string
           resolved_at?: string | null
+          responder_name?: string | null
           responder_notes?: string | null
           speed?: number | null
           started_at?: string
@@ -61,18 +73,24 @@ export type Database = {
         }
         Update: {
           accuracy?: number | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
           address?: string | null
           altitude?: number | null
+          arrived_at?: string | null
           cancel_reason?: string | null
+          en_route_at?: string | null
           google_maps_url?: string | null
           heading?: number | null
           id?: string
+          image_urls?: string[]
           latitude?: number
           longitude?: number
           mdrrmo_status?: string
           notes?: string | null
           police_status?: string
           resolved_at?: string | null
+          responder_name?: string | null
           responder_notes?: string | null
           speed?: number | null
           started_at?: string

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Battery, Wifi, MapPin, Loader2, X, Send, Radio, ShieldCheck,
+  Battery, Wifi, MapPin, Loader2, X, Send, Radio, ShieldCheck, Camera, Image as ImageIcon, Trash2, Siren,
 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
@@ -23,7 +23,10 @@ import {
   reverseGeocode,
   vibrate,
   watchPosition,
+  uploadEmergencyImage,
+  getEmergencyImageUrls,
 } from "@/lib/rescue";
+import { compressImage } from "@/lib/image";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
@@ -48,6 +51,18 @@ function HomePage() {
   const [startedAt, setStartedAt] = useState<Date | null>(null);
   const [battery, setBattery] = useState<number | null>(null);
   const [online, setOnline] = useState(true);
+  const [imagePaths, setImagePaths] = useState<string[]>([]);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [responderStatus, setResponderStatus] = useState<{
+    acknowledged_at: string | null;
+    en_route_at: string | null;
+    arrived_at: string | null;
+    responder_name: string | null;
+    status: string;
+  } | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
   const countdownRef = useRef<number | null>(null);
   const watchStopRef = useRef<(() => void) | null>(null);
   const pushIntervalRef = useRef<number | null>(null);
@@ -116,9 +131,9 @@ function HomePage() {
       if (!user.user) return;
       const { data } = await supabase
         .from("emergencies")
-        .select("id, started_at, type, latitude, longitude, address")
+        .select("id, started_at, type, latitude, longitude, address, image_urls, acknowledged_at, en_route_at, arrived_at, responder_name, status")
         .eq("user_id", user.user.id)
-        .eq("status", "active")
+        .in("status", ["active", "responding"])
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -127,12 +142,98 @@ function HomePage() {
         setStartedAt(new Date(data.started_at));
         setSelectedType(data.type as EmergencyType);
         setAddress(data.address);
+        setImagePaths(data.image_urls ?? []);
+        setResponderStatus({
+          acknowledged_at: data.acknowledged_at,
+          en_route_at: data.en_route_at,
+          arrived_at: data.arrived_at,
+          responder_name: data.responder_name,
+          status: data.status,
+        });
         setPhase("active");
         startLiveTracking(data.id, user.user.id);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh signed URLs whenever image paths change
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!imagePaths.length) {
+        setImageUrls([]);
+        return;
+      }
+      try {
+        const urls = await getEmergencyImageUrls(imagePaths);
+        if (alive) setImageUrls(urls);
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [imagePaths]);
+
+  // Realtime: listen for responder status updates on the active emergency
+  useEffect(() => {
+    if (!activeId) return;
+    const channel = supabase
+      .channel(`emergency-${activeId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "emergencies", filter: `id=eq.${activeId}` },
+        (payload) => {
+          const row = payload.new as {
+            acknowledged_at: string | null;
+            en_route_at: string | null;
+            arrived_at: string | null;
+            responder_name: string | null;
+            status: string;
+            image_urls: string[] | null;
+          };
+          setResponderStatus((prev) => {
+            const next = {
+              acknowledged_at: row.acknowledged_at,
+              en_route_at: row.en_route_at,
+              arrived_at: row.arrived_at,
+              responder_name: row.responder_name,
+              status: row.status,
+            };
+            if (row.acknowledged_at && !prev?.acknowledged_at) {
+              vibrate([80, 40, 80]);
+              playAlertBeep();
+              toast.success(
+                row.responder_name
+                  ? `${row.responder_name} has seen your alert`
+                  : "A responder has seen your alert",
+              );
+            }
+            if (row.en_route_at && !prev?.en_route_at) {
+              vibrate([120, 60, 120, 60, 120]);
+              playAlertBeep();
+              toast.success(
+                row.responder_name
+                  ? `${row.responder_name} is on the way to your location`
+                  : "A responder is on the way to your location",
+                { duration: 8000 },
+              );
+            }
+            if (row.arrived_at && !prev?.arrived_at) {
+              vibrate([200, 100, 200]);
+              playAlertBeep();
+              toast.success("Responder has arrived at your location", { duration: 8000 });
+            }
+            return next;
+          });
+          if (row.image_urls) setImagePaths(row.image_urls);
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeId]);
 
   function startLiveTracking(emergencyId: string, userId: string) {
     watchStopRef.current?.();
@@ -213,6 +314,14 @@ function HomePage() {
       });
       setActiveId(e.id);
       setStartedAt(new Date(e.started_at));
+      setImagePaths([]);
+      setResponderStatus({
+        acknowledged_at: null,
+        en_route_at: null,
+        arrived_at: null,
+        responder_name: null,
+        status: "active",
+      });
       setPhase("active");
       vibrate([120, 80, 120, 80, 200]);
       toast.success("Emergency alert sent to responders");
@@ -237,10 +346,40 @@ function HomePage() {
       stopLiveTracking();
       setActiveId(null);
       setStartedAt(null);
+      setImagePaths([]);
+      setImageUrls([]);
+      setResponderStatus(null);
       setPhase("idle");
       toast.success("Emergency cancelled");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not cancel");
+    }
+  }
+
+  async function handleImagePicked(files: FileList | null) {
+    if (!files || !files.length || !activeId) return;
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) {
+          toast.error(`Skipped ${file.name}: not an image`);
+          continue;
+        }
+        const compressed = await compressImage(file, 2 * 1024 * 1024);
+        const path = await uploadEmergencyImage(user.user.id, activeId, compressed);
+        setImagePaths((prev) => [...prev, path]);
+        toast.success(
+          `Photo uploaded (${(compressed.size / 1024 / 1024).toFixed(2)} MB)`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (cameraRef.current) cameraRef.current.value = "";
+      if (galleryRef.current) galleryRef.current.value = "";
     }
   }
 
@@ -384,8 +523,109 @@ function HomePage() {
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <StatusPill label="Police" status="Notified" />
-              <StatusPill label="MDRRMO" status="Notified" />
+              <StatusPill
+                label="Responder"
+                status={
+                  responderStatus?.arrived_at
+                    ? "Arrived"
+                    : responderStatus?.en_route_at
+                    ? "On the way"
+                    : responderStatus?.acknowledged_at
+                    ? "Alert seen"
+                    : "Notified"
+                }
+                highlight={!!(responderStatus?.en_route_at || responderStatus?.arrived_at)}
+              />
+              <StatusPill
+                label="Assigned to"
+                status={responderStatus?.responder_name || "Awaiting dispatcher"}
+              />
+            </div>
+
+            {(responderStatus?.acknowledged_at || responderStatus?.en_route_at || responderStatus?.arrived_at) && (
+              <div className="mt-3 flex items-start gap-2 rounded-2xl border border-[color:var(--safe)]/40 bg-[color:var(--safe)]/10 p-3 text-sm">
+                <Siren className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--safe)]" />
+                <div>
+                  <div className="font-semibold text-[color:var(--safe)]">
+                    {responderStatus?.arrived_at
+                      ? "Responder has arrived"
+                      : responderStatus?.en_route_at
+                      ? "Responder is on the way"
+                      : "Your alert has been seen"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {responderStatus?.responder_name
+                      ? `${responderStatus.responder_name} · stay where you are and keep your phone reachable.`
+                      : "Stay where you are and keep your phone reachable."}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Photo upload */}
+            <div className="mt-5">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Photos for responders ({imagePaths.length})
+                </div>
+                {uploading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Add a photo of the scene or a landmark. Images are compressed to under 2 MB.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-background/50 py-3 text-sm font-medium hover:bg-secondary disabled:opacity-60"
+                >
+                  <Camera className="h-4 w-4" /> Take photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-background/50 py-3 text-sm font-medium hover:bg-secondary disabled:opacity-60"
+                >
+                  <ImageIcon className="h-4 w-4" /> From gallery
+                </button>
+              </div>
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => handleImagePicked(e.target.files)}
+              />
+              <input
+                ref={galleryRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => handleImagePicked(e.target.files)}
+              />
+              {imageUrls.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {imageUrls.map((url, i) => (
+                    <a
+                      key={i}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-secondary"
+                    >
+                      <img
+                        src={url}
+                        alt={`Emergency photo ${i + 1}`}
+                        className="h-full w-full object-cover transition group-hover:scale-105"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
 
             {coords && (

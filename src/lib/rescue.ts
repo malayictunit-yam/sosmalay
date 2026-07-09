@@ -136,6 +136,82 @@ export async function resolveEmergency(id: string) {
   if (error) throw error;
 }
 
+// ---------- Emergency images ----------
+
+const BUCKET = "emergency-images";
+
+export async function uploadEmergencyImage(
+  userId: string,
+  emergencyId: string,
+  blob: Blob,
+): Promise<string> {
+  const path = `${userId}/${emergencyId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+
+  const { data: current, error: readErr } = await supabase
+    .from("emergencies")
+    .select("image_urls")
+    .eq("id", emergencyId)
+    .single();
+  if (readErr) throw readErr;
+
+  const next: string[] = [...((current?.image_urls ?? []) as string[]), path];
+  const { error: upErr } = await supabase
+    .from("emergencies")
+    .update({ image_urls: next })
+    .eq("id", emergencyId);
+  if (upErr) throw upErr;
+  return path;
+}
+
+export async function getEmergencyImageUrls(paths: string[]): Promise<string[]> {
+  if (!paths.length) return [];
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(paths, 60 * 60);
+  if (error) throw error;
+  return (data ?? []).map((d) => d.signedUrl).filter((u): u is string => !!u);
+}
+
+// ---------- Responder status transitions ----------
+
+export async function acknowledgeEmergency(id: string, responderId: string, responderName: string) {
+  const { error } = await supabase
+    .from("emergencies")
+    .update({
+      acknowledged_at: new Date().toISOString(),
+      acknowledged_by: responderId,
+      responder_name: responderName,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function markEnRoute(id: string, responderId: string, responderName: string) {
+  const { error } = await supabase
+    .from("emergencies")
+    .update({
+      status: "responding",
+      en_route_at: new Date().toISOString(),
+      acknowledged_by: responderId,
+      responder_name: responderName,
+      acknowledged_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function markArrived(id: string) {
+  const { error } = await supabase
+    .from("emergencies")
+    .update({ arrived_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export function playAlertBeep() {
   try {
     const Ctx =

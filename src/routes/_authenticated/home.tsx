@@ -690,12 +690,12 @@ function HomePage() {
   );
 }
 
-function StatusPill({ label, status }: { label: string; status: string }) {
+function StatusPill({ label, status, highlight }: { label: string; status: string; highlight?: boolean }) {
   return (
-    <div className="rounded-2xl border border-border bg-background/50 px-4 py-3">
+    <div className={`rounded-2xl border px-4 py-3 ${highlight ? "border-[color:var(--safe)]/50 bg-[color:var(--safe)]/10" : "border-border bg-background/50"}`}>
       <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-0.5 flex items-center gap-2 text-sm font-medium">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--safe)]" />
+        <span className={`h-1.5 w-1.5 animate-pulse rounded-full ${highlight ? "bg-[color:var(--safe)]" : "bg-[color:var(--safe)]"}`} />
         {status}
       </div>
     </div>

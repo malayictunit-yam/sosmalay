@@ -462,6 +462,7 @@ function Info({ label, value, href, icon }: { label: string; value: string; href
 }
 
 function exportCsv(rows: Emergency[]) {
+  // helper unchanged
   if (!rows.length) return;
   const headers = ["id", "type", "status", "latitude", "longitude", "address", "started_at"];
   const lines = [

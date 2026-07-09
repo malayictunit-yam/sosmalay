@@ -3,11 +3,20 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { MapPin, Phone, Loader2, Radio, CheckCircle2 } from "lucide-react";
+import { MapPin, Phone, Loader2, Radio, CheckCircle2, Eye, Navigation2, Flag } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
-import { emergencyEmoji, emergencyLabel, googleMapsUrl, resolveEmergency } from "@/lib/rescue";
+import {
+  emergencyEmoji,
+  emergencyLabel,
+  googleMapsUrl,
+  resolveEmergency,
+  acknowledgeEmergency,
+  markEnRoute,
+  markArrived,
+  getEmergencyImageUrls,
+} from "@/lib/rescue";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -26,6 +35,11 @@ type Emergency = {
   address: string | null;
   started_at: string;
   google_maps_url: string | null;
+  image_urls: string[] | null;
+  acknowledged_at: string | null;
+  en_route_at: string | null;
+  arrived_at: string | null;
+  responder_name: string | null;
 };
 
 function DashboardPage() {
@@ -205,12 +219,31 @@ function EmergencyRow({ e, selected, onSelect, muted }: { e: Emergency; selected
 
 function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQueryClient> }) {
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | "ack" | "enroute" | "arrived">(null);
   const { data: profile } = useQuery({
     queryKey: ["profile", e.user_id],
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("*").eq("id", e.user_id).maybeSingle();
       return data;
     },
+  });
+  const { data: me } = useQuery({
+    queryKey: ["me-profile"],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", u.user.id)
+        .maybeSingle();
+      return { userId: u.user.id, name: p?.full_name || u.user.email || "Responder" };
+    },
+  });
+  const { data: photoUrls } = useQuery({
+    queryKey: ["emergency-photos", e.id, e.image_urls?.length ?? 0],
+    enabled: !!e.image_urls && e.image_urls.length > 0,
+    queryFn: () => getEmergencyImageUrls(e.image_urls ?? []),
   });
   const { data: locations } = useQuery({
     queryKey: ["emergency-locations", e.id],
@@ -239,6 +272,28 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runAction(action: "ack" | "enroute" | "arrived") {
+    if (!me) return;
+    setBusyAction(action);
+    try {
+      if (action === "ack") {
+        await acknowledgeEmergency(e.id, me.userId, me.name);
+        toast.success("Citizen has been notified that you saw their alert");
+      } else if (action === "enroute") {
+        await markEnRoute(e.id, me.userId, me.name);
+        toast.success("Citizen has been notified you're on the way");
+      } else if (action === "arrived") {
+        await markArrived(e.id);
+        toast.success("Marked as arrived on scene");
+      }
+      qc.invalidateQueries({ queryKey: ["all-emergencies"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -294,7 +349,37 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
         >
           <MapPin className="h-4 w-4" /> Navigate
         </a>
-        {e.status === "active" && (
+        {e.status !== "resolved" && e.status !== "cancelled" && !e.acknowledged_at && (
+          <button
+            onClick={() => runAction("ack")}
+            disabled={busyAction !== null}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-60"
+          >
+            {busyAction === "ack" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+            Acknowledge (mark as seen)
+          </button>
+        )}
+        {e.status !== "resolved" && e.status !== "cancelled" && !e.en_route_at && (
+          <button
+            onClick={() => runAction("enroute")}
+            disabled={busyAction !== null}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--danger)] px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-60"
+          >
+            {busyAction === "enroute" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation2 className="h-4 w-4" />}
+            On the way
+          </button>
+        )}
+        {e.status !== "resolved" && e.status !== "cancelled" && e.en_route_at && !e.arrived_at && (
+          <button
+            onClick={() => runAction("arrived")}
+            disabled={busyAction !== null}
+            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-60"
+          >
+            {busyAction === "arrived" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flag className="h-4 w-4" />}
+            Arrived on scene
+          </button>
+        )}
+        {e.status !== "resolved" && e.status !== "cancelled" && (
           <button
             onClick={markResolved}
             disabled={busy}
@@ -305,6 +390,39 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
           </button>
         )}
       </div>
+
+      {(e.acknowledged_at || e.en_route_at || e.arrived_at) && (
+        <div className="mt-4 grid gap-2 rounded-2xl border border-border bg-background/40 p-3 text-xs sm:grid-cols-3">
+          <StatusRow label="Seen" value={e.acknowledged_at} />
+          <StatusRow label="En route" value={e.en_route_at} />
+          <StatusRow label="Arrived" value={e.arrived_at} />
+        </div>
+      )}
+
+      {photoUrls && photoUrls.length > 0 && (
+        <div className="mt-5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Photos from citizen · {photoUrls.length}
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {photoUrls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-secondary"
+              >
+                <img
+                  src={url}
+                  alt={`Scene photo ${i + 1}`}
+                  className="h-full w-full object-cover transition group-hover:scale-105"
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {locations && locations.length > 1 && (
         <div className="mt-5">

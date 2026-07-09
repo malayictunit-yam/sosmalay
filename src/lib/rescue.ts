@@ -158,7 +158,7 @@ export async function uploadEmergencyImage(
     .single();
   if (readErr) throw readErr;
 
-  const next = [...(current?.image_urls ?? []), path];
+  const next: string[] = [...((current?.image_urls ?? []) as string[]), path];
   const { error: upErr } = await supabase
     .from("emergencies")
     .update({ image_urls: next })

@@ -575,6 +575,17 @@ function HomePage() {
               </div>
             )}
 
+            {responderStatus?.responder_notes && (
+              <div className="mt-3 rounded-2xl border border-border bg-background/60 p-3 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Note from {responderStatus.responder_name || "responder"}
+                </div>
+                <p className="mt-1 whitespace-pre-wrap leading-relaxed">
+                  {responderStatus.responder_notes}
+                </p>
+              </div>
+            )}
+
             {/* Photo upload */}
             <div className="mt-5">
               <div className="flex items-center justify-between">

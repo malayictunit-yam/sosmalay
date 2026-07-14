@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { MapPin, Phone, Loader2, Radio, CheckCircle2, Eye, Navigation2, Flag } from "lucide-react";
+import { MapPin, Phone, Loader2, Radio, CheckCircle2, Eye, Navigation2, Flag, MessageSquare } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,7 @@ import {
   markEnRoute,
   markArrived,
   getEmergencyImageUrls,
+  updateResponderNotes,
 } from "@/lib/rescue";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -40,6 +41,7 @@ type Emergency = {
   en_route_at: string | null;
   arrived_at: string | null;
   responder_name: string | null;
+  responder_notes: string | null;
 };
 
 function DashboardPage() {
@@ -220,6 +222,11 @@ function EmergencyRow({ e, selected, onSelect, muted }: { e: Emergency; selected
 function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQueryClient> }) {
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<null | "ack" | "enroute" | "arrived">(null);
+  const [note, setNote] = useState(e.responder_notes ?? "");
+  const [savingNote, setSavingNote] = useState(false);
+  useEffect(() => {
+    setNote(e.responder_notes ?? "");
+  }, [e.id, e.responder_notes]);
   const { data: profile } = useQuery({
     queryKey: ["profile", e.user_id],
     queryFn: async () => {
@@ -294,6 +301,19 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function saveNote() {
+    setSavingNote(true);
+    try {
+      await updateResponderNotes(e.id, note);
+      toast.success("Note sent to the citizen");
+      qc.invalidateQueries({ queryKey: ["all-emergencies"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSavingNote(false);
     }
   }
 

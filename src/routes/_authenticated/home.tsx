@@ -132,7 +132,7 @@ function HomePage() {
       if (!user.user) return;
       const { data } = await supabase
         .from("emergencies")
-        .select("id, started_at, type, latitude, longitude, address, image_urls, acknowledged_at, en_route_at, arrived_at, responder_name, status")
+        .select("id, started_at, type, latitude, longitude, address, image_urls, acknowledged_at, en_route_at, arrived_at, responder_name, responder_notes, status")
         .eq("user_id", user.user.id)
         .in("status", ["active", "responding"])
         .order("started_at", { ascending: false })
@@ -149,6 +149,7 @@ function HomePage() {
           en_route_at: data.en_route_at,
           arrived_at: data.arrived_at,
           responder_name: data.responder_name,
+          responder_notes: data.responder_notes,
           status: data.status,
         });
         setPhase("active");
@@ -190,6 +191,7 @@ function HomePage() {
             en_route_at: string | null;
             arrived_at: string | null;
             responder_name: string | null;
+            responder_notes: string | null;
             status: string;
             image_urls: string[] | null;
           };
@@ -199,6 +201,7 @@ function HomePage() {
               en_route_at: row.en_route_at,
               arrived_at: row.arrived_at,
               responder_name: row.responder_name,
+              responder_notes: row.responder_notes,
               status: row.status,
             };
             if (row.acknowledged_at && !prev?.acknowledged_at) {
@@ -224,6 +227,14 @@ function HomePage() {
               vibrate([200, 100, 200]);
               playAlertBeep();
               toast.success("Responder has arrived at your location", { duration: 8000 });
+            }
+            if (row.responder_notes && row.responder_notes !== prev?.responder_notes) {
+              vibrate([60, 40, 60]);
+              playAlertBeep();
+              toast.message("New note from responder", {
+                description: row.responder_notes,
+                duration: 10000,
+              });
             }
             return next;
           });
@@ -321,6 +332,7 @@ function HomePage() {
         en_route_at: null,
         arrived_at: null,
         responder_name: null,
+        responder_notes: null,
         status: "active",
       });
       setPhase("active");

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { MapPin, Phone, Loader2, Radio, CheckCircle2, Eye, Navigation2, Flag } from "lucide-react";
+import { MapPin, Phone, Loader2, Radio, CheckCircle2, Eye, Navigation2, Flag, MessageSquare } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,7 @@ import {
   markEnRoute,
   markArrived,
   getEmergencyImageUrls,
+  updateResponderNotes,
 } from "@/lib/rescue";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -40,6 +41,7 @@ type Emergency = {
   en_route_at: string | null;
   arrived_at: string | null;
   responder_name: string | null;
+  responder_notes: string | null;
 };
 
 function DashboardPage() {
@@ -220,6 +222,11 @@ function EmergencyRow({ e, selected, onSelect, muted }: { e: Emergency; selected
 function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQueryClient> }) {
   const [busy, setBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<null | "ack" | "enroute" | "arrived">(null);
+  const [note, setNote] = useState(e.responder_notes ?? "");
+  const [savingNote, setSavingNote] = useState(false);
+  useEffect(() => {
+    setNote(e.responder_notes ?? "");
+  }, [e.id, e.responder_notes]);
   const { data: profile } = useQuery({
     queryKey: ["profile", e.user_id],
     queryFn: async () => {
@@ -294,6 +301,19 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function saveNote() {
+    setSavingNote(true);
+    try {
+      await updateResponderNotes(e.id, note);
+      toast.success("Note sent to the citizen");
+      qc.invalidateQueries({ queryKey: ["all-emergencies"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -398,6 +418,35 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
           <StatusRow label="Arrived" value={e.arrived_at} />
         </div>
       )}
+
+      <div className="mt-5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <MessageSquare className="h-3.5 w-3.5" /> Note to citizen
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Short instructions the citizen will see in their timeline (e.g. "Stay inside, unit 3 min away").
+        </p>
+        <textarea
+          value={note}
+          onChange={(ev) => setNote(ev.target.value)}
+          maxLength={280}
+          rows={3}
+          placeholder="Type a short message for the citizen…"
+          className="mt-2 w-full resize-none rounded-2xl border border-border bg-background/60 p-3 text-sm outline-none focus:border-foreground/40"
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">{note.length}/280</span>
+          <button
+            type="button"
+            onClick={saveNote}
+            disabled={savingNote || note === (e.responder_notes ?? "")}
+            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+            {e.responder_notes ? "Update note" : "Send note"}
+          </button>
+        </div>
+      </div>
 
       {photoUrls && photoUrls.length > 0 && (
         <div className="mt-5">

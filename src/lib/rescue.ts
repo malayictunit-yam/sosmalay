@@ -212,6 +212,14 @@ export async function markArrived(id: string) {
   if (error) throw error;
 }
 
+export async function updateResponderNotes(id: string, notes: string) {
+  const { error } = await supabase
+    .from("emergencies")
+    .update({ responder_notes: notes.trim() ? notes.trim() : null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 export function playAlertBeep() {
   try {
     const Ctx =

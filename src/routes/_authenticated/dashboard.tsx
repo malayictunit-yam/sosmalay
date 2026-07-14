@@ -419,6 +419,35 @@ function EmergencyDetail({ e, qc }: { e: Emergency; qc: ReturnType<typeof useQue
         </div>
       )}
 
+      <div className="mt-5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <MessageSquare className="h-3.5 w-3.5" /> Note to citizen
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Short instructions the citizen will see in their timeline (e.g. "Stay inside, unit 3 min away").
+        </p>
+        <textarea
+          value={note}
+          onChange={(ev) => setNote(ev.target.value)}
+          maxLength={280}
+          rows={3}
+          placeholder="Type a short message for the citizen…"
+          className="mt-2 w-full resize-none rounded-2xl border border-border bg-background/60 p-3 text-sm outline-none focus:border-foreground/40"
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">{note.length}/280</span>
+          <button
+            type="button"
+            onClick={saveNote}
+            disabled={savingNote || note === (e.responder_notes ?? "")}
+            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+          >
+            {savingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+            {e.responder_notes ? "Update note" : "Send note"}
+          </button>
+        </div>
+      </div>
+
       {photoUrls && photoUrls.length > 0 && (
         <div className="mt-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

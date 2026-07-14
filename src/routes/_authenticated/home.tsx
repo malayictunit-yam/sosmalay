@@ -59,6 +59,7 @@ function HomePage() {
     en_route_at: string | null;
     arrived_at: string | null;
     responder_name: string | null;
+    responder_notes: string | null;
     status: string;
   } | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
